@@ -9,7 +9,7 @@ import './libraries/SafeMath.sol';
 import './interfaces/IERC20.sol';
 import './interfaces/IWETH.sol';
 
-contract TaalRouter02 is ITaalRouter02 {
+contract TaalRouter is ITaalRouter02 {
     using SafeMath for uint;
 
     address public immutable override factory;
