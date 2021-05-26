@@ -22,7 +22,7 @@ library TaalLibrary {
                 factory,
                 keccak256(abi.encodePacked(token0, token1)),
 //                hex'd0d4c4cd0848c93cb4fd1f498d7013ee6bfb25783ea21593d5834f5d250ece66' // init code hash
-                hex'0fe4f8e9a8c473ffaf7223a754e765774fab2f6d96d3fc89ba9f8cf66871a548'
+                hex'74eaa4fc54052df469bf0dbd58079c41131eb36479bc8a5bfe15a68405120d3b'
             ))));
     }
 
