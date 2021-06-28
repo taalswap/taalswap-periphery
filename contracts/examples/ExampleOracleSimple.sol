@@ -1,7 +1,7 @@
 pragma solidity =0.6.6;
 
-import '@uniswap/v2-core/contracts/interfaces/ITaalFactory.sol';
-import '@uniswap/v2-core/contracts/interfaces/ITaalPair.sol';
+import 'taalswap-core/contracts/interfaces/ITaalFactory.sol';
+import 'taalswap-core/contracts/interfaces/ITaalPair.sol';
 import '@uniswap/lib/contracts/libraries/FixedPoint.sol';
 
 import '../libraries/TaalOracleLibrary.sol';

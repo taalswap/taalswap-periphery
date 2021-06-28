@@ -1,6 +1,6 @@
 pragma solidity =0.6.6;
 
-import '@uniswap/v2-core/contracts/interfaces/ITaalCallee.sol';
+import 'taalswap-core/contracts/interfaces/ITaalCallee.sol';
 
 import '../libraries/TaalLibrary.sol';
 import '../interfaces/V1/IUniswapV1Factory.sol';
