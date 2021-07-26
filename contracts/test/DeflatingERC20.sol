@@ -1,6 +1,7 @@
 pragma solidity =0.6.6;
 
 import '../libraries/SafeMath.sol';
+import '../libraries/ECDSA.sol';
 
 contract DeflatingERC20 {
     using SafeMath for uint;
@@ -90,7 +91,8 @@ contract DeflatingERC20 {
                 keccak256(abi.encode(PERMIT_TYPEHASH, owner, spender, value, nonces[owner]++, deadline))
             )
         );
-        address recoveredAddress = ecrecover(digest, v, r, s);
+        //// address recoveredAddress = ecrecover(digest, v, r, s);
+        address recoveredAddress = ECDSA.recover(digest, v, r, s);
         require(recoveredAddress != address(0) && recoveredAddress == owner, 'INVALID_SIGNATURE');
         _approve(owner, spender, value);
     }

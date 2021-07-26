@@ -1,6 +1,10 @@
 pragma solidity =0.6.6;
 
 import '../libraries/SafeMath.sol';
+/**
+ * Fix : [Suggestion] Malleable attack risk
+ */
+import './libraries/ECDSA.sol';
 
 contract ERC20 {
     using SafeMath for uint;
@@ -20,6 +24,10 @@ contract ERC20 {
     event Approval(address indexed owner, address indexed spender, uint value);
     event Transfer(address indexed from, address indexed to, uint value);
 
+    /**
+      * https://github.com/ethereum/EIPs/blob/master/EIPS/eip-2612.md
+      * DOMAIN_SEPARATOR = 0x12941727324f08818b6823ad59845bef3c6e4139428eb3fd9490efeb9d088969;
+      */
     constructor(uint _totalSupply) public {
         uint chainId;
         assembly {
@@ -87,7 +95,9 @@ contract ERC20 {
                 keccak256(abi.encode(PERMIT_TYPEHASH, owner, spender, value, nonces[owner]++, deadline))
             )
         );
-        address recoveredAddress = ecrecover(digest, v, r, s);
+        //// Fix : [Suggestion] Malleable attack risk
+        //// address recoveredAddress = ecrecover(digest, v, r, s);
+        address recoveredAddress = ECDSA.recover(digest, v, r, s);
         require(recoveredAddress != address(0) && recoveredAddress == owner, 'INVALID_SIGNATURE');
         _approve(owner, spender, value);
     }
