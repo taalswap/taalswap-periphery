@@ -21,8 +21,10 @@ library TaalLibrary {
                 hex'ff',
                 factory,
                 keccak256(abi.encodePacked(token0, token1)),
-//                hex'0f3a8b1d98b38326f5633e629cf4c0cc4c7b060d1d895e8758011059941b96c5' // init code hash
-                hex'e91389f3e161a2ac9db6e5380c1750a30dfe06b6685cb0b61800599094cdfc92'
+//                hex'0f3a8b1d98b38326f5633e629cf4c0cc4c7b060d1d895e8758011059941b96c5'     // init code hash
+                // hex'e91389f3e161a2ac9db6e5380c1750a30dfe06b6685cb0b61800599094cdfc92'    // Mainnet
+                // hex'84a2a9c191a42b0a806d1a4cc9cd6f883edd8081be5ad3a58393bcc2984aadd7'       // Baobab
+                hex'b13541466663eddbea0ebd2cd4879cd61eb6ce83f681c8b28399bb6190b15279'       // Baobab
             ))));
     }
 
