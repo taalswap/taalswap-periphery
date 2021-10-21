@@ -9,39 +9,59 @@ interface ITaalBridge {
         uint amountIn,
         uint amountOutMin,
         address[] calldata path,
+        uint amountOutMinX,
         address[] calldata pathx,
         address to,
         uint deadline
     ) external returns (uint[] memory amounts);
-    function xswapExactTokensForTokens(
-        uint amountIn,
-        uint amountOutMin,
-        address[] calldata path,
-        address to,
-        uint deadline
-    ) external returns (uint[] memory amounts);
+
     function swapTokensForExactTokens(
         uint amountOut,
         uint amountInMax,
         address[] calldata path,
+        uint amountOutX,
         address[] calldata pathx,
         address to,
         uint deadline
     ) external returns (uint[] memory amounts);
-    function swapExactETHForTokens(uint amountOutMin, address[] calldata path, address[] calldata pathx, address to, uint deadline)
-    external
-    payable
-    returns (uint[] memory amounts);
-    function swapTokensForExactETH(uint amountOut, uint amountInMax, address[] calldata path, address[] calldata pathx, address to, uint deadline)
-    external
-    returns (uint[] memory amounts);
-    function swapExactTokensForETH(uint amountIn, uint amountOutMin, address[] calldata path, address[] calldata pathx, address to, uint deadline)
-    external
-    returns (uint[] memory amounts);
-    function swapETHForExactTokens(uint amountOut, address[] calldata path, address[] calldata pathx, address to, uint deadline)
-    external
-    payable
-    returns (uint[] memory amounts);
+
+    function swapExactETHForTokens(
+        uint amountOutMin,
+        address[] calldata path,
+        uint amountOutMinX,
+        address[] calldata pathx,
+        address to,
+        uint deadline
+    ) external payable returns (uint[] memory amounts);
+
+    function swapTokensForExactETH(
+        uint amountOut,
+        uint amountInMax,
+        address[] calldata path,
+        uint amountOutX,
+        address[] calldata pathx,
+        address to,
+        uint deadline
+    ) external returns (uint[] memory amounts);
+
+    function swapExactTokensForETH(
+        uint amountIn,
+        uint amountOutMin,
+        address[] calldata path,
+        uint amountOutMinX,
+        address[] calldata pathx,
+        address to,
+        uint deadline
+    ) external returns (uint[] memory amounts);
+
+    function swapETHForExactTokens(
+        uint amountOut,
+        address[] calldata path,
+        uint amountOutX,
+        address[] calldata pathx,
+        address to,
+        uint deadline
+    ) external payable returns (uint[] memory amounts);
 
     function quote(uint amountA, uint reserveA, uint reserveB) external pure returns (uint amountB);
     function getAmountOut(uint amountIn, uint reserveIn, uint reserveOut) external pure returns (uint amountOut);
@@ -53,6 +73,7 @@ interface ITaalBridge {
         uint amountIn,
         uint amountOutMin,
         address[] calldata path,
+        uint amountOutMinX,
         address[] calldata pathx,
         address to,
         uint deadline
@@ -60,6 +81,7 @@ interface ITaalBridge {
     function swapExactETHForTokensSupportingFeeOnTransferTokens(
         uint amountOutMin,
         address[] calldata path,
+        uint amountOutMinX,
         address[] calldata pathx,
         address to,
         uint deadline
@@ -68,6 +90,7 @@ interface ITaalBridge {
         uint amountIn,
         uint amountOutMin,
         address[] calldata path,
+        uint amountOutMinX,
         address[] calldata pathx,
         address to,
         uint deadline
