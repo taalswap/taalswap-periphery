@@ -2,6 +2,7 @@ pragma solidity =0.6.6;
 
 import '@uniswap/lib/contracts/libraries/TransferHelper.sol';
 import './interfaces/ITaalBridge.sol';
+import '@openzeppelin/contracts/access/Ownable.sol';
 import './libraries/SafeMath.sol';
 import 'taalswap-core/contracts/interfaces/ITaalPair.sol';
 import './libraries/TaalLibrary.sol';
@@ -9,80 +10,143 @@ import './interfaces/IERC20.sol';
 import './interfaces/IWETH.sol';
 import './interfaces/IWTAL.sol';
 
-contract XSwapBridge is ITaalBridge {
+
+contract XSwapBridge is ITaalBridge, Ownable {
     using SafeMath for uint;
 
     address public immutable override factory;
     address public immutable override WETH;
     address public immutable override WTAL;
-    address public immutable bridgeOperator;
+    address public bridgeOperator;
+    address public feeAddress;
+    uint public BRIDGE_FEE = 20000000000000000;     // Default 0.02 ETH
 
     event SwapExactETHForTokens(        // -> xswapExactTokensForTokens
         address indexed to,
-        uint indexed amountIn,
-        uint indexed amountOutMin,
+        address token,
+        uint amount,
+        uint amountIn,
+        uint amountOutMin,
         address[] pathx
     );
     event SwapETHForExactTokens(        // -> xswapTokensForExactTokens
         address indexed to,
-        uint indexed amountOut,
-        uint indexed amountInMax,
+        address token,
+        uint amount,
+        uint amountOut,
+        uint amountInMax,
         address[] pathx
     );
     event SwapTokensForExactETH(        // -> x
         address indexed to,
-        uint indexed amountOut,
-        uint indexed amountInMax,
+        address token,
+        uint amount,
+        uint amountOut,
+        uint amountInMax,
         address[] pathx
     );
     event SwapExactTokensForETH(        // -> x
         address indexed to,
-        uint indexed amountIn,
-        uint indexed amountOutMin,
+        address token,
+        uint amount,
+        uint amountIn,
+        uint amountOutMin,
         address[] pathx
     );
     event SwapExactTokensForTokens(     // -> x
         address indexed to,
-        uint indexed amountIn,
-        uint indexed amountOutMin,
+        address token,
+        uint amount,
+        uint amountIn,
+        uint amountOutMin,
+        address[] pathx
+    );
+    event SwapExactTaalForTaal(     // -> x
+        address indexed to,
+        address token,
+        uint amount,
+        uint amountIn,
+        uint amountOutMin,
         address[] pathx
     );
     event SwapTokensForExactTokens(     // -> x
         address indexed to,
-        uint indexed amountOut,
-        uint indexed amountInMax,
+        address token,
+        uint amount,
+        uint amountOut,
+        uint amountInMax,
         address[] pathx
     );
     event SwapExactTokensForTokensSupportingFeeOnTransferTokens(        // -> xswapExactTokensForTokens
         address indexed to,
-        uint indexed amountIn,
-        uint indexed amountOutMin,
+        address token,
+        uint amount,
+        uint amountIn,
+        uint amountOutMin,
         address[] pathx
     );
     event SwapExactETHForTokensSupportingFeeOnTransferTokens(           // -> xswapExactTokensForTokens
         address indexed to,
-        uint indexed amountIn,
-        uint indexed amountOutMin,
+        address token,
+        uint amount,
+        uint amountIn,
+        uint amountOutMin,
         address[] pathx
     );
     event SwapExactTokensForETHSupportingFeeOnTransferTokens(           // -< swapExactTokensForETH
         address indexed to,
-        uint indexed amountIn,
-        uint indexed amountOutMin,
+        address token,
+        uint amount,
+        uint amountIn,
+        uint amountOutMin,
         address[] pathx
     );
     event XswapExactTokensForTokens(
         address indexed to,
         address indexed token,
-        uint indexed amountOut
+        uint indexed amountOut,
+        bytes32 txHash
+    );
+    event XswapExactTaalForTaal(
+        address indexed to,
+        address indexed token,
+        uint indexed amountOut,
+        bytes32 txHash
+    );
+    event XswapTokensForExactTokens(
+        address indexed to,
+        address token,
+        uint amountOut,
+        bytes32 txHash
+    );
+    event XswapTokensForExactETH(
+        address indexed to,
+        address indexed token,
+        uint indexed amountOut,
+        bytes32 txHash
     );
     event XswapExactTokensForETH(
         address indexed to,
         address indexed token,
-        uint indexed amountOut
+        uint indexed amountOut,
+        bytes32 txHash
+    );
+    event XswapExactTokensForETHSupportingFeeOnTransferTokens(
+        address indexed to,
+        address indexed token,
+        uint indexed amountOut,
+        bytes32 txHash
+    );
+    event XswapExactTokensForTokensSupportingFeeOnTransferTokens(
+        address indexed to,
+        address indexed token,
+        uint indexed amountOut,
+        bytes32 txHash
     );
 
-    event  SetBridge(address indexed _bridge);
+    event  SetBridgeOperator(address indexed _bridge);
+    event  SetBridgeFee(uint indexed _fee);
+    event  SetFeeAddress(address indexed _feeAddress);
 
     modifier ensure(uint deadline) {
         require(deadline >= block.timestamp, 'XSwapBridge: EXPIRED');
@@ -134,36 +198,33 @@ contract XSwapBridge is ITaalBridge {
         address[] calldata pathx,
         address to,
         uint deadline
-    ) external virtual override ensure(deadline) returns (uint[] memory amounts)
+    ) external virtual override payable ensure(deadline) returns (uint[] memory amounts)
     {
-        // Always TAL is output
+        require(msg.value >= BRIDGE_FEE, 'XSwapBridge: INSUFFICIENT_BRIDGE_FEE');
         amounts = TaalLibrary.getAmountsOut(factory, amountIn, path);
         require(amounts[amounts.length - 1] >= amountOutMin, 'XSwapBridge: INSUFFICIENT_OUTPUT_AMOUNT');
         TransferHelper.safeTransferFrom(
             path[0], msg.sender, TaalLibrary.pairFor(factory, path[0], path[1]), amounts[0]
         );
-        // _swap(amounts, path, to);
         _swap(amounts, path, address(this));
-        uint amountOut = amounts[amounts.length - 1];
         TransferHelper.safeTransfer(
-            path[path.length - 1], WTAL, amountOut
+            path[path.length - 1], WTAL, amounts[amounts.length - 1]
         );
-
-        emit SwapExactTokensForTokens(to, amountOut, amountOutMinX, pathx);
+        TransferHelper.safeTransferETH(
+            feeAddress, BRIDGE_FEE
+        );
+        emit SwapExactTokensForTokens(to, path[0], amountIn, amounts[amounts.length - 1], amountOutMinX, pathx);
     }
     function xswapExactTokensForTokens(
         uint amountIn,
         uint amountOutMin,
         address[] calldata path,
         address to,
-        uint deadline
+        uint deadline,
+        bytes32 txHash
     ) external virtual ensure(deadline) limitedAccess returns (uint[] memory amounts)
     {
-        // Always TAL is input
         amounts = TaalLibrary.getAmountsOut(factory, amountIn, path);
-        // 아래 조건으로 인해 실행이 안될 경우는 ?
-        // 무조건 성공하개 처리...
-        // require(amounts[amounts.length - 1] >= amountOutMin, 'XSwapBridge: INSUFFICIENT_OUTPUT_AMOUNT');
         TransferHelper.safeTransferFrom(
             path[0], WTAL, address(this), amounts[0]
         );
@@ -172,56 +233,96 @@ contract XSwapBridge is ITaalBridge {
             path[0], TaalLibrary.pairFor(factory, path[0], path[1]), amounts[0]
         );
         _swap(amounts, path, to);
-        uint amountOut = amounts[amounts.length - 1];
-        emit XswapExactTokensForTokens(to, path[path.length - 1], amountOut);
+        emit XswapExactTokensForTokens(to, path[path.length - 1], amounts[amounts.length - 1], txHash);
     }
 
-    function swapTokensForExactTokens(
-        uint amountOut,
-        uint amountInMax,
+    function swapExactTaalForTaal(
+        uint amountIn,
+        uint amountOutMin,
         address[] calldata path,
-        uint amountOutX,
+        uint amountOutMinX,
         address[] calldata pathx,
         address to,
         uint deadline
-    ) external virtual override ensure(deadline) returns (uint[] memory amounts)
+    ) external virtual payable ensure(deadline) returns (uint[] memory amounts)
     {
-        // Always TAL is output
-        amounts = TaalLibrary.getAmountsIn(factory, amountOut, path);
-        require(amounts[0] <= amountInMax, 'XSwapBridge: EXCESSIVE_INPUT_AMOUNT');
+        // Bridge Fee
+        require(msg.value >= BRIDGE_FEE, 'XSwapBridge: INSUFFICIENT_BRIDGE_FEE');
+
+        // Deposit TAL
         TransferHelper.safeTransferFrom(
-            path[0], msg.sender, TaalLibrary.pairFor(factory, path[0], path[1]), amounts[0]
+            path[0], msg.sender, WTAL, amountIn
         );
-        // _swap(amounts, path, to);
-        _swap(amounts, path, address(this));
-        uint amountOutRlt = amounts[amounts.length - 1];
-        TransferHelper.safeTransfer(
-            path[path.length - 1], WTAL, amountOutRlt
+        // Pay for Bridge Fee
+        TransferHelper.safeTransferETH(
+            feeAddress, BRIDGE_FEE
         );
-        emit SwapTokensForExactTokens(to, amountOutX, amountOutRlt, pathx);
+        emit SwapExactTaalForTaal(to, path[0], amountIn, amountIn, amountOutMinX, pathx);
     }
-    // 당분간 사용안함...
-    function xswapTokensForExactTokens(
-        uint amountOut,
-        uint amountInMax,
+    function xswapExactTaalForTaal(
+        uint amountIn,
+        uint amountOutMin,
         address[] calldata path,
         address to,
-        uint deadline
+        uint deadline,
+        bytes32 txHash
     ) external virtual ensure(deadline) limitedAccess returns (uint[] memory amounts)
     {
-        // Always TAL is input
-        amounts = TaalLibrary.getAmountsIn(factory, amountOut, path);
-        // 아래 조건으로 인해 실행이 안될 경우는 ?
-        require(amounts[0] <= amountInMax, 'XSwapBridge: EXCESSIVE_INPUT_AMOUNT');
+        // Withdraw TAL
         TransferHelper.safeTransferFrom(
-            path[0], WTAL, address(this), amounts[0]
+            path[path.length - 1], WTAL, to, amountIn
         );
-        require(IERC20(path[0]).balanceOf(address(this)) >= amounts[0], 'XSwapBridge: WTAL_WITHDRAW_FAILED');
-        TransferHelper.safeTransfer(
-            path[0], TaalLibrary.pairFor(factory, path[0], path[1]), amounts[0]
-        );
-        _swap(amounts, path, to);
+        emit XswapExactTaalForTaal(to, path[path.length - 1], amountIn, txHash);
     }
+
+//    // This will be not used by cross chain swap
+//    // because of price and liquidity changes in the moddle cross chaining.
+//    function swapTokensForExactTokens(
+//        uint amountOut,
+//        uint amountInMax,
+//        address[] calldata path,
+//        uint amountOutX,
+//        address[] calldata pathx,
+//        address to,
+//        uint deadline
+//    ) external virtual override payable ensure(deadline) returns (uint[] memory amounts)
+//    {
+//        require(msg.value >= BRIDGE_FEE, 'XSwapBridge: INSUFFICIENT_BRIDGE_FEE');
+//        amounts = TaalLibrary.getAmountsIn(factory, amountOut, path);
+//        require(amounts[0] <= amountInMax, 'XSwapBridge: EXCESSIVE_INPUT_AMOUNT');
+//        TransferHelper.safeTransferFrom(
+//            path[0], msg.sender, TaalLibrary.pairFor(factory, path[0], path[1]), amounts[0]
+//        );
+//        _swap(amounts, path, address(this));
+//        TransferHelper.safeTransfer(
+//            path[path.length - 1], WTAL, amounts[amounts.length - 1]
+//        );
+//        TransferHelper.safeTransferETH(
+//            feeAddress, BRIDGE_FEE
+//        );
+//        emit SwapTokensForExactTokens(to, path[0], amounts[0], amountOutX, amounts[amounts.length - 1], pathx);
+//    }
+//    // This will be not used by cross chain swap because of 'XSwapBridge: EXCESSIVE_INPUT_AMOUNT'
+//    function xswapTokensForExactTokens(
+//        uint amountOut,
+//        uint amountInMax,
+//        address[] calldata path,
+//        address to,
+//        uint deadline
+//    ) external virtual ensure(deadline) limitedAccess returns (uint[] memory amounts)
+//    {
+//        amounts = TaalLibrary.getAmountsIn(factory, amountOut, path);
+//        // require(amounts[0] <= amountInMax, 'XSwapBridge: EXCESSIVE_INPUT_AMOUNT');
+//        TransferHelper.safeTransferFrom(
+//            path[0], WTAL, address(this), amounts[0]
+//        );
+//        require(IERC20(path[0]).balanceOf(address(this)) >= amounts[0], 'XSwapBridge: WTAL_WITHDRAW_FAILED');
+//        TransferHelper.safeTransfer(
+//            path[0], TaalLibrary.pairFor(factory, path[0], path[1]), amounts[0]
+//        );
+//        _swap(amounts, path, to);
+//        emit XswapTokensForExactTokens(to, path[path.length - 1], amounts[amounts.length - 1], txHash);
+//    }
 
     function swapExactETHForTokens(
         uint amountOutMin,
@@ -232,73 +333,75 @@ contract XSwapBridge is ITaalBridge {
         uint deadline
     ) external virtual override payable ensure(deadline) returns (uint[] memory amounts)
     {
-        // Always TAL is output
         require(path[0] == WETH, 'XSwapBridge: INVALID_PATH');
-        amounts = TaalLibrary.getAmountsOut(factory, msg.value, path);
+        uint amountETH = msg.value.sub(BRIDGE_FEE);
+        require(amountETH > 0, 'XSwapBridge: INSUFFICIENT_BRIDGE_FEE');
+        amounts = TaalLibrary.getAmountsOut(factory, amountETH, path);
         require(amounts[amounts.length - 1] >= amountOutMin, 'XSwapBridge: INSUFFICIENT_OUTPUT_AMOUNT');
         IWETH(WETH).deposit{value: amounts[0]}();
         assert(IWETH(WETH).transfer(TaalLibrary.pairFor(factory, path[0], path[1]), amounts[0]));
-        // _swap(amounts, path, to);
         _swap(amounts, path, address(this));
-        uint amountOut = amounts[amounts.length - 1];
         TransferHelper.safeTransfer(
-            path[path.length - 1], WTAL, amountOut
+            path[path.length - 1], WTAL, amounts[amounts.length - 1]
         );
-        emit SwapExactETHForTokens(to, amountOut, amountOutMinX, pathx);
-        // => xswapExactTokensForTokens(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline)
+        TransferHelper.safeTransferETH(
+            feeAddress, BRIDGE_FEE
+        );
+        emit SwapExactETHForTokens(to, path[0], msg.value, amounts[amounts.length - 1], amountOutMinX, pathx);
+        // bridge call => xswapExactTokensForTokens(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline)
     }
 
-    function swapTokensForExactETH(
-        uint amountOut,
-        uint amountInMax,
-        address[] calldata path,
-        uint amountOutX,
-        address[] calldata pathx,
-        address to,
-        uint deadline
-    ) external virtual override ensure(deadline) returns (uint[] memory amounts)
-    {
-        // Always TAL is output
-        // require(path[path.length - 1] == WETH, 'XSwapBridge: INVALID_PATH');
-        amounts = TaalLibrary.getAmountsIn(factory, amountOut, path);
-        require(amounts[0] <= amountInMax, 'XSwapBridge: EXCESSIVE_INPUT_AMOUNT');
-        TransferHelper.safeTransferFrom(
-            path[0], msg.sender, TaalLibrary.pairFor(factory, path[0], path[1]), amounts[0]
-        );
-        _swap(amounts, path, address(this));
-        // IWETH(WETH).withdraw(amounts[amounts.length - 1]);
-        // TransferHelper.safeTransferETH(to, amounts[amounts.length - 1]);
-        uint amountOutRlt = amounts[amounts.length - 1];
-        TransferHelper.safeTransfer(
-            path[path.length - 1], WTAL, amountOutRlt
-        );
-        emit SwapTokensForExactETH(to, amountOutX, amountOutRlt, pathx);
-    }
-    // 당분간 사용안함...
-    function xswapTokensForExactETH(
-        uint amountOut,
-        uint amountInMax,
-        address[] calldata path,
-        address to,
-        uint deadline
-    ) external virtual ensure(deadline) limitedAccess returns (uint[] memory amounts)
-    {
-        // Always TAL is input
-        require(path[path.length - 1] == WETH, 'XSwapBridge: INVALID_PATH');
-        amounts = TaalLibrary.getAmountsIn(factory, amountOut, path);
-        // 아래 조건으로 인해 실행이 안될 경우는 ?
-        require(amounts[0] <= amountInMax, 'XSwapBridge: EXCESSIVE_INPUT_AMOUNT');
-        TransferHelper.safeTransferFrom(
-            path[0], WTAL, address(this), amounts[0]
-        );
-        require(IERC20(path[0]).balanceOf(address(this)) >= amounts[0], 'XSwapBridge: WTAL_WITHDRAW_FAILED');
-        TransferHelper.safeTransfer(
-            path[0], TaalLibrary.pairFor(factory, path[0], path[1]), amounts[0]
-        );
-        _swap(amounts, path, address(this));
-        IWETH(WETH).withdraw(amounts[amounts.length - 1]);
-        TransferHelper.safeTransferETH(to, amounts[amounts.length - 1]);
-    }
+//    // This will be not used by cross chain swap
+//    // because of price and liquidity changes in the moddle cross chaining.
+//    function swapTokensForExactETH(
+//        uint amountOut,
+//        uint amountInMax,
+//        address[] calldata path,
+//        uint amountOutX,
+//        address[] calldata pathx,
+//        address to,
+//        uint deadline
+//    ) external virtual override payable ensure(deadline) returns (uint[] memory amounts)
+//    {
+//        require(msg.value >= BRIDGE_FEE, 'XSwapBridge: INSUFFICIENT_BRIDGE_FEE');
+//        amounts = TaalLibrary.getAmountsIn(factory, amountOut, path);
+//        require(amounts[0] <= amountInMax, 'XSwapBridge: EXCESSIVE_INPUT_AMOUNT');
+//        TransferHelper.safeTransferFrom(
+//            path[0], msg.sender, TaalLibrary.pairFor(factory, path[0], path[1]), amounts[0]
+//        );
+//        _swap(amounts, path, address(this));
+//        TransferHelper.safeTransfer(
+//            path[path.length - 1], WTAL, amounts[amounts.length - 1]
+//        );
+//        TransferHelper.safeTransferETH(
+//            feeAddress, BRIDGE_FEE
+//        );
+//        emit SwapTokensForExactETH(to, path[0], amounts[0], amountOutX, amounts[amounts.length - 1], pathx);
+//    }
+//    // This will be not used by cross chain swap because of 'XSwapBridge: EXCESSIVE_INPUT_AMOUNT'
+//    function xswapTokensForExactETH(
+//        uint amountOut,
+//        uint amountInMax,
+//        address[] calldata path,
+//        address to,
+//        uint deadline
+//    ) external virtual ensure(deadline) limitedAccess returns (uint[] memory amounts)
+//    {
+//        require(path[path.length - 1] == WETH, 'XSwapBridge: INVALID_PATH');
+//        amounts = TaalLibrary.getAmountsIn(factory, amountOut, path);
+//        // require(amounts[0] <= amountInMax, 'XSwapBridge: EXCESSIVE_INPUT_AMOUNT');
+//        TransferHelper.safeTransferFrom(
+//            path[0], WTAL, address(this), amounts[0]
+//        );
+//        require(IERC20(path[0]).balanceOf(address(this)) >= amounts[0], 'XSwapBridge: WTAL_WITHDRAW_FAILED');
+//        TransferHelper.safeTransfer(
+//            path[0], TaalLibrary.pairFor(factory, path[0], path[1]), amounts[0]
+//        );
+//        _swap(amounts, path, address(this));
+//        IWETH(WETH).withdraw(amounts[amounts.length - 1]);
+//        TransferHelper.safeTransferETH(to, amounts[amounts.length - 1]);
+//        emit XswapTokensForExactETH(to, path[path.length - 1], amounts[amounts.length - 1], txHash);
+//    }
 
     function swapExactTokensForETH(
         uint amountIn,
@@ -308,38 +411,34 @@ contract XSwapBridge is ITaalBridge {
         address[] calldata pathx,
         address to,
         uint deadline
-    ) external virtual override ensure(deadline) returns (uint[] memory amounts)
+    ) external virtual override payable ensure(deadline) returns (uint[] memory amounts)
     {
-        // Always TAL is output
-        // require(path[path.length - 1] == WETH, 'XSwapBridge: INVALID_PATH');
+        require(msg.value >= BRIDGE_FEE, 'XSwapBridge: INSUFFICIENT_BRIDGE_FEE');
         amounts = TaalLibrary.getAmountsOut(factory, amountIn, path);
         require(amounts[amounts.length - 1] >= amountOutMin, 'XSwapBridge: INSUFFICIENT_OUTPUT_AMOUNT');
         TransferHelper.safeTransferFrom(
             path[0], msg.sender, TaalLibrary.pairFor(factory, path[0], path[1]), amounts[0]
         );
         _swap(amounts, path, address(this));
-        // IWETH(WETH).withdraw(amounts[amounts.length - 1]);
-        // TransferHelper.safeTransferETH(to, amounts[amounts.length - 1]);
-        uint amountOut = amounts[amounts.length - 1];
         TransferHelper.safeTransfer(
-            path[path.length - 1], WTAL, amountOut
+            path[path.length - 1], WTAL, amounts[amounts.length - 1]
         );
-        emit SwapExactTokensForETH(to, amountOut, amountOutMinX, pathx);
+        TransferHelper.safeTransferETH(
+            feeAddress, BRIDGE_FEE
+        );
+        emit SwapExactTokensForETH(to, path[0], amountIn, amounts[amounts.length - 1], amountOutMinX, pathx);
     }
     function xswapExactTokensForETH(
         uint amountIn,
         uint amountOutMin,
         address[] calldata path,
         address to,
-        uint deadline
+        uint deadline,
+        bytes32 txHash
     ) external virtual ensure(deadline) limitedAccess returns (uint[] memory amounts)
     {
-        // Always TAL is input
-        // require(path[path.length - 1] == WETH, 'XSwapBridge: INVALID_PATH');
+        require(path[path.length - 1] == WETH, 'XSwapBridge: INVALID_PATH');
         amounts = TaalLibrary.getAmountsOut(factory, amountIn, path);
-        // 아래 조건으로 인해 실행이 안될 경우는 ?
-        // 무조건 성공하게 처리...
-        // require(amounts[amounts.length - 1] >= amountOutMin, 'XSwapBridge: INSUFFICIENT_OUTPUT_AMOUNT');
         TransferHelper.safeTransferFrom(
             path[0], WTAL, address(this), amounts[0]
         );
@@ -350,44 +449,40 @@ contract XSwapBridge is ITaalBridge {
         _swap(amounts, path, address(this));
         IWETH(WETH).withdraw(amounts[amounts.length - 1]);
         TransferHelper.safeTransferETH(to, amounts[amounts.length - 1]);
-        uint amountOut = amounts[amounts.length - 1];
-        emit XswapExactTokensForETH(to, path[path.length - 1], amountOut);
+        emit XswapExactTokensForETH(to, path[path.length - 1], amounts[amounts.length - 1], txHash);
     }
 
-    function swapETHForExactTokens(
-        uint amountOut,
-        address[] calldata path,
-        uint amountOutX,
-        address[] calldata pathx,
-        address to,
-        uint deadline
-    ) external virtual override payable ensure(deadline) returns (uint[] memory amounts)
-    {
-        // Always TAL is output
-        require(path[0] == WETH, 'XSwapBridge: INVALID_PATH');
-        amounts = TaalLibrary.getAmountsIn(factory, amountOut, path);
-        require(amounts[0] <= msg.value, 'XSwapBridge: EXCESSIVE_INPUT_AMOUNT');
-        IWETH(WETH).deposit{value: amounts[0]}();
-        assert(IWETH(WETH).transfer(TaalLibrary.pairFor(factory, path[0], path[1]), amounts[0]));
-        // _swap(amounts, path, to);
-        _swap(amounts, path, address(this));
-        uint amountOutRlt = amounts[amounts.length - 1];
-        TransferHelper.safeTransfer(
-            path[path.length - 1], WTAL, amountOutRlt
-        );
-        // refund dust eth, if any
-        if (msg.value > amounts[0]) TransferHelper.safeTransferETH(msg.sender, msg.value - amounts[0]);
-        emit SwapETHForExactTokens(to, amountOutX, amountOutRlt, pathx);
-        // => xswapTokensForExactTokens(uint amountOut, uint amountInMax, address[] calldata path, address to, uint deadline)
-    }
+//    function swapETHForExactTokens(
+//        uint amountOut,
+//        address[] calldata path,
+//        uint amountOutX,
+//        address[] calldata pathx,
+//        address to,
+//        uint deadline
+//    ) external virtual override payable ensure(deadline) returns (uint[] memory amounts)
+//    {
+//        require(path[0] == WETH, 'XSwapBridge: INVALID_PATH');
+//        amounts = TaalLibrary.getAmountsIn(factory, amountOut, path);
+//        uint amountETH = msg.value.sub(BRIDGE_FEE);
+//        require(amountETH > 0, 'XSwapBridge: INSUFFICIENT_BRIDGE_FEE');
+//        require(amounts[0] <= amountETH, 'XSwapBridge: EXCESSIVE_INPUT_AMOUNT');
+//        IWETH(WETH).deposit{value: amounts[0]}();
+//        assert(IWETH(WETH).transfer(TaalLibrary.pairFor(factory, path[0], path[1]), amounts[0]));
+//        _swap(amounts, path, address(this));
+//        TransferHelper.safeTransfer(
+//            path[path.length - 1], WTAL, amounts[amounts.length - 1]
+//        );
+//        TransferHelper.safeTransferETH(
+//            feeAddress, BRIDGE_FEE
+//        );
+//        // refund dust eth, if any
+//        if (msg.value.sub(BRIDGE_FEE) > amounts[0]) TransferHelper.safeTransferETH(msg.sender, msg.value.sub(BRIDGE_FEE).sub(amounts[0]));
+//        emit SwapETHForExactTokens(to, path[0], amounts[0], amountOutX, amounts[amounts.length - 1], pathx);
+//    }
 
     // **** SWAP (supporting fee-on-transfer tokens) ****
     // requires the initial amount to have already been sent to the first pair
-    function _swapSupportingFeeOnTransferTokens(
-        address[] memory path,
-        address _to
-    ) internal virtual
-    {
+    function _swapSupportingFeeOnTransferTokens(address[] memory path, address _to) internal virtual {
         for (uint i; i < path.length - 1; i++) {
             (address input, address output) = (path[i], path[i + 1]);
             (address token0,) = TaalLibrary.sortTokens(input, output);
@@ -414,18 +509,12 @@ contract XSwapBridge is ITaalBridge {
         address[] calldata pathx,
         address to,
         uint deadline
-    ) external virtual override ensure(deadline)
+    ) external virtual override payable ensure(deadline)
     {
-        // Always TAL is output
+        require(msg.value >= BRIDGE_FEE, 'XSwapBridge: INSUFFICIENT_BRIDGE_FEE');
         TransferHelper.safeTransferFrom(
             path[0], msg.sender, TaalLibrary.pairFor(factory, path[0], path[1]), amountIn
         );
-        // uint balanceBefore = IERC20(path[path.length - 1]).balanceOf(to);
-        // _swapSupportingFeeOnTransferTokens(path, to);
-        // require(
-        //    IERC20(path[path.length - 1]).balanceOf(to).sub(balanceBefore) >= amountOutMin,
-        //    'XSwapBridge: INSUFFICIENT_OUTPUT_AMOUNT'
-        //);
         uint balanceBefore = IERC20(path[path.length - 1]).balanceOf(address(this));
         _swapSupportingFeeOnTransferTokens(path, address(this));
         uint amountOut = IERC20(path[path.length - 1]).balanceOf(address(this)).sub(balanceBefore);
@@ -436,8 +525,30 @@ contract XSwapBridge is ITaalBridge {
         TransferHelper.safeTransfer(
             path[path.length - 1], WTAL, amountOut
         );
-        emit SwapExactTokensForTokensSupportingFeeOnTransferTokens(to, amountOut, amountOutMinX, pathx);
-        // => xswapExactTokensForTokens(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline)
+        TransferHelper.safeTransferETH(
+            feeAddress, BRIDGE_FEE
+        );
+        emit SwapExactTokensForTokensSupportingFeeOnTransferTokens(to, path[0], amountIn, amountOut, amountOutMinX, pathx);
+    }
+    function xswapExactTokensForTokensSupportingFeeOnTransferTokens(
+        uint amountIn,
+        uint amountOutMin,
+        address[] calldata path,
+        address to,
+        uint deadline
+    ) external virtual ensure(deadline) limitedAccess {
+        amounts = TaalLibrary.getAmountsOut(factory, amountIn, path);
+        TransferHelper.safeTransferFrom(
+            path[0], WTAL, address(this), amounts[0]
+        );
+        require(IERC20(path[0]).balanceOf(address(this)) >= amounts[0], 'XSwapBridge: WTAL_WITHDRAW_FAILED');
+        TransferHelper.safeTransfer(
+            path[0], TaalLibrary.pairFor(factory, path[0], path[1]), amounts[0]
+        );
+        uint balanceBefore = IERC20(path[path.length - 1]).balanceOf(to);
+        _swapSupportingFeeOnTransferTokens(path, to);
+        uint amountOut = IERC20(path[path.length - 1]).balanceOf(to).sub(balanceBefore);
+        emit XswapExactTokensForTokensSupportingFeeOnTransferTokens(to, path[path.length - 1], amountOut, txHash);
     }
 
     function swapExactETHForTokensSupportingFeeOnTransferTokens(
@@ -449,14 +560,12 @@ contract XSwapBridge is ITaalBridge {
         uint deadline
     ) external virtual override payable ensure(deadline)
     {
-        // Always TAL is output
         require(path[0] == WETH, 'XSwapBridge: INVALID_PATH');
-        uint amountIn = msg.value;
+        // uint amountIn = msg.value;
+        uint amountIn = msg.value.sub(BRIDGE_FEE);
+        require(amountIn > 0, 'XSwapBridge: INSUFFICIENT_BRIDGE_FEE');
         IWETH(WETH).deposit{value: amountIn}();
         assert(IWETH(WETH).transfer(TaalLibrary.pairFor(factory, path[0], path[1]), amountIn));
-        // uint balanceBefore = IERC20(path[path.length - 1]).balanceOf(to);
-        // _swapSupportingFeeOnTransferTokens(path, to);
-        // uint amountOut = IERC20(path[path.length - 1]).balanceOf(to).sub(balanceBefore);
         uint balanceBefore = IERC20(path[path.length - 1]).balanceOf(address(this));
         _swapSupportingFeeOnTransferTokens(path, address(this));
         uint amountOut = IERC20(path[path.length - 1]).balanceOf(address(this)).sub(balanceBefore);
@@ -467,8 +576,12 @@ contract XSwapBridge is ITaalBridge {
         TransferHelper.safeTransfer(
             path[path.length - 1], WTAL, amountOut
         );
-        emit SwapExactETHForTokensSupportingFeeOnTransferTokens(to, amountOut, amountOutMinX, pathx);
-        // => xswapExactTokensForTokens(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline)
+        // Pay for Bridge Fee
+        TransferHelper.safeTransferETH(
+            feeAddress, BRIDGE_FEE
+        );
+        emit SwapExactETHForTokensSupportingFeeOnTransferTokens(to, path[0], msg.value, amountOut, amountOutMinX, pathx);
+        // => xswapExactTokensForTokensSupportingFeeOnTransferTokens(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline)
     }
 
     function swapExactTokensForETHSupportingFeeOnTransferTokens(
@@ -479,18 +592,13 @@ contract XSwapBridge is ITaalBridge {
         address[] calldata pathx,
         address to,
         uint deadline
-    ) external virtual override ensure(deadline)
+    ) external virtual override payable ensure(deadline)
     {
-        // Always TAL is output
         require(path[path.length - 1] == WETH, 'XSwapBridge: INVALID_PATH');
+        require(msg.value >= BRIDGE_FEE, 'XSwapBridge: INSUFFICIENT_BRIDGE_FEE');
         TransferHelper.safeTransferFrom(
             path[0], msg.sender, TaalLibrary.pairFor(factory, path[0], path[1]), amountIn
         );
-        // _swapSupportingFeeOnTransferTokens(path, address(this));
-        // uint amountOut = IERC20(WETH).balanceOf(address(this));
-        // require(amountOut >= amountOutMin, 'XSwapBridge: INSUFFICIENT_OUTPUT_AMOUNT');
-        // IWETH(WETH).withdraw(amountOut);
-        // TransferHelper.safeTransferETH(to, amountOut);
         uint balanceBefore = IERC20(path[path.length - 1]).balanceOf(address(this));
         _swapSupportingFeeOnTransferTokens(path, address(this));
         uint amountOut = IERC20(path[path.length - 1]).balanceOf(address(this)).sub(balanceBefore);
@@ -501,8 +609,28 @@ contract XSwapBridge is ITaalBridge {
         TransferHelper.safeTransfer(
             path[path.length - 1], WTAL, amountOut
         );
-        emit SwapExactTokensForETHSupportingFeeOnTransferTokens(to, amountOut, amountOutMinX, pathx);
-        // => xswapExactTokensForETH(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline)
+        TransferHelper.safeTransferETH(
+            feeAddress, BRIDGE_FEE
+        );
+        emit SwapExactTokensForETHSupportingFeeOnTransferTokens(to, path[0], amountIn, amountOut, amountOutMinX, pathx);
+    }
+    function xswapExactTokensForETHSupportingFeeOnTransferTokens(
+        uint amountIn,
+        uint amountOutMin,
+        address[] calldata path,
+        address to,
+        uint deadline
+    ) external virtual ensure(deadline) limitedAccess
+    {
+        require(path[path.length - 1] == WETH, 'TaalRouter: INVALID_PATH');
+        TransferHelper.safeTransferFrom(
+            path[0], msg.sender, TaalLibrary.pairFor(factory, path[0], path[1]), amountIn
+        );
+        _swapSupportingFeeOnTransferTokens(path, address(this));
+        uint amountOut = IERC20(WETH).balanceOf(address(this));
+        IWETH(WETH).withdraw(amountOut);
+        TransferHelper.safeTransferETH(to, amountOut);
+        emit XswapExactTokensForETHSupportingFeeOnTransferTokens(to, path[path.length - 1], amountOut, txHash);
     }
 
     // **** LIBRARY FUNCTIONS ****
@@ -549,8 +677,18 @@ contract XSwapBridge is ITaalBridge {
         return TaalLibrary.getAmountsIn(factory, amountOut, path);
     }
 
-//    function setBridgeOp(address _bridge) public onlyOwner {
-//        bridgeOperator = _bridge;
-//        emit SetBridge(_bridge);
-//    }
+    function setBridgeOperator(address _bridge) public onlyOwner {
+        bridgeOperator = _bridge;
+        emit SetBridgeOperator(_bridge);
+    }
+
+    function setBridgeFee(uint _fee) public onlyOwner {
+        BRIDGE_FEE = _fee;
+        emit SetBridgeFee(_fee);
+    }
+
+    function setFeeAddress(address _feeAddress) public onlyOwner {
+        feeAddress = _feeAddress;
+        emit SetFeeAddress(_feeAddress);
+    }
 }
