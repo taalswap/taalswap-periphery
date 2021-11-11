@@ -26,6 +26,7 @@ library TaalLibrary {
                 // hex'84a2a9c191a42b0a806d1a4cc9cd6f883edd8081be5ad3a58393bcc2984aadd7'        // Ropsten
                 // hex'c7185d17dddb851bbf0dc38ead1e9d917434a22bfdf5838d6d340e536c11ee99'        // Klaytn
                 hex'c4d074200a9f2cb31991155eea9423bc813f6acd85ee962a64f55032cf46f6b5'       // Baobab
+                // hex'a3aa53c2cf76d0c1aab6fbafc5468f547304de1064a6fe1d3701bd046008b440'        // Cypress Xswap Test
             ))));
     }
 
