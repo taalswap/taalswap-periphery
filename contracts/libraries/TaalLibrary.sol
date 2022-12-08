@@ -26,7 +26,8 @@ library TaalLibrary {
                 // hex'84a2a9c191a42b0a806d1a4cc9cd6f883edd8081be5ad3a58393bcc2984aadd7'        // Ropsten
                 // hex'c7185d17dddb851bbf0dc38ead1e9d917434a22bfdf5838d6d340e536c11ee99'        // Klaytn
                 // hex'c4d074200a9f2cb31991155eea9423bc813f6acd85ee962a64f55032cf46f6b5'        // Baobab
-                hex'5c4d9590a572fb419a17bcaeb3195896c27f7b8fdbb24aada1776e7700abe1d4'       // Binance Testnet
+                // hex'5c4d9590a572fb419a17bcaeb3195896c27f7b8fdbb24aada1776e7700abe1d4'        // Binance Testnet
+                hex'b7b4567455b1c29e492e04c40a5b129852981698db651578bd18422fe7ed2b42'       // Polygon Mumbai Testnet
             ))));
     }
 
